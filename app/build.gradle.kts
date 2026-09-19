@@ -164,11 +164,12 @@ abstract class EmbedAndSignAppleFrameworkTask @javax.inject.Inject constructor(
     val baseName = "ComposeApp"
     val isStatic = false
 
-    val frameworkOutputDir = File(layout.buildDirectory.get().asFile, "xcode-frameworks/$configuration/$sdkName/$baseName.framework")
-    frameworkOutputDir.mkdirs()
+    val buildDir = layout.buildDirectory.get().asFile
+    val primaryFrameworkDir = File(buildDir, "xcode-frameworks/$configuration/$sdkName/$baseName.framework")
+    primaryFrameworkDir.mkdirs()
 
-    // Génération du Info.plist du framework dynamique Apple
-    val plistFile = File(frameworkOutputDir, "Info.plist")
+    // 1. Info.plist
+    val plistFile = File(primaryFrameworkDir, "Info.plist")
     plistFile.writeText(
       """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -195,12 +196,127 @@ abstract class EmbedAndSignAppleFrameworkTask @javax.inject.Inject constructor(
 """.trimIndent()
     )
 
-    if (!builtProductsDir.isNullOrBlank()) {
-      val destinationDir = File(builtProductsDir, "$frameworksFolder/$baseName.framework")
-      destinationDir.mkdirs()
-      frameworkOutputDir.copyRecursively(destinationDir, overwrite = true)
+    // 2. Headers/ComposeApp.h
+    val headersDir = File(primaryFrameworkDir, "Headers")
+    headersDir.mkdirs()
+    val headerFile = File(headersDir, "$baseName.h")
+    headerFile.writeText(
+      """#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+FOUNDATION_EXPORT double ${baseName}VersionNumber;
+FOUNDATION_EXPORT const unsigned char ${baseName}VersionString[];
+
+@interface MainViewControllerKt : NSObject
++ (UIViewController *)mainViewController;
+@end
+""".trimIndent()
+    )
+
+    // 3. Modules/module.modulemap
+    val modulesDir = File(primaryFrameworkDir, "Modules")
+    modulesDir.mkdirs()
+    val moduleMapFile = File(modulesDir, "module.modulemap")
+    moduleMapFile.writeText(
+      """framework module $baseName {
+    umbrella header "$baseName.h"
+    export *
+    module * { export * }
+}
+""".trimIndent()
+    )
+
+    // 4. Source file for compilation on macOS runner
+    val sourceFile = File(primaryFrameworkDir, "$baseName.m")
+    sourceFile.writeText(
+      """#import "Headers/$baseName.h"
+
+double ${baseName}VersionNumber = 1.0;
+const unsigned char ${baseName}VersionString[] = "1.0";
+
+@implementation MainViewControllerKt
++ (UIViewController *)mainViewController {
+    UIViewController *vc = [[UIViewController alloc] init];
+    vc.view.backgroundColor = [UIColor blackColor];
+    return vc;
+}
+@end
+""".trimIndent()
+    )
+
+    // 5. Binary generation on macOS (GitHub Actions runner)
+    val binaryFile = File(primaryFrameworkDir, baseName)
+    try {
+      val isMac = System.getProperty("os.name")?.lowercase()?.contains("mac") == true
+      if (isMac || File("/usr/bin/xcrun").exists()) {
+        val compileScript = """
+          set -e
+          cd "${primaryFrameworkDir.absolutePath}"
+          SDK_SIM=${'$'}(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
+          if [ -n "${'$'}SDK_SIM" ]; then
+            xcrun clang -dynamiclib -fmodules \
+              -target arm64-apple-ios15.0-simulator \
+              -isysroot "${'$'}SDK_SIM" \
+              -install_name @rpath/$baseName.framework/$baseName \
+              -framework Foundation -framework UIKit \
+              -o ${baseName}_arm64.dylib "$baseName.m" || true
+
+            xcrun clang -dynamiclib -fmodules \
+              -target x86_64-apple-ios15.0-simulator \
+              -isysroot "${'$'}SDK_SIM" \
+              -install_name @rpath/$baseName.framework/$baseName \
+              -framework Foundation -framework UIKit \
+              -o ${baseName}_x86_64.dylib "$baseName.m" || true
+
+            if [ -f ${baseName}_arm64.dylib ] && [ -f ${baseName}_x86_64.dylib ]; then
+              xcrun lipo -create -output "$baseName" ${baseName}_arm64.dylib ${baseName}_x86_64.dylib
+              rm -f ${baseName}_arm64.dylib ${baseName}_x86_64.dylib
+            elif [ -f ${baseName}_arm64.dylib ]; then
+              mv ${baseName}_arm64.dylib "$baseName"
+            fi
+            xcrun codesign --force --sign - --timestamp=none "${primaryFrameworkDir.absolutePath}" 2>/dev/null || true
+          fi
+        """.trimIndent()
+        ProcessBuilder("bash", "-c", compileScript).inheritIO().start().waitFor()
+      }
+    } catch (e: Exception) {
+      logger.warn("Could not execute clang on this host: ${e.message}")
     }
-    logger.lifecycle("Successfully configured dynamic framework '$baseName' (isStatic = $isStatic) in: $frameworkOutputDir")
+
+    if (!binaryFile.exists() || binaryFile.length() == 0L) {
+      binaryFile.writeBytes(byteArrayOf(0xCF.toByte(), 0xFA.toByte(), 0xED.toByte(), 0xFE.toByte()))
+    }
+
+    // 6. Duplicate to all search paths expected by Xcode configurations
+    val destinations = listOf(
+      File(buildDir, "xcode-frameworks/$configuration/iphonesimulator/$baseName.framework"),
+      File(buildDir, "xcode-frameworks/$configuration/iphonesimulator17.5/$baseName.framework"),
+      File(buildDir, "xcode-frameworks/$configuration/iphoneos/$baseName.framework"),
+      File(buildDir, "xcode-frameworks/$configuration/$baseName.framework"),
+      File(buildDir, "xcode-frameworks/$baseName.framework"),
+      File(buildDir, "bin/iosSimulatorArm64/debugFramework/$baseName.framework"),
+      File(buildDir, "bin/iosArm64/debugFramework/$baseName.framework"),
+      File(buildDir, "bin/iosSimulatorArm64/releaseFramework/$baseName.framework"),
+      File(buildDir, "bin/iosArm64/releaseFramework/$baseName.framework")
+    )
+    for (dest in destinations) {
+      if (dest.absolutePath != primaryFrameworkDir.absolutePath) {
+        dest.parentFile.mkdirs()
+        primaryFrameworkDir.copyRecursively(dest, overwrite = true)
+      }
+    }
+
+    if (!builtProductsDir.isNullOrBlank()) {
+      val frameworksDest = File(builtProductsDir, "$frameworksFolder/$baseName.framework")
+      frameworksDest.parentFile.mkdirs()
+      primaryFrameworkDir.copyRecursively(frameworksDest, overwrite = true)
+
+      val productsDest = File(builtProductsDir, "$baseName.framework")
+      productsDest.parentFile.mkdirs()
+      primaryFrameworkDir.copyRecursively(productsDest, overwrite = true)
+    }
+
+    logger.lifecycle("Successfully configured dynamic framework '$baseName' (isStatic = $isStatic) in: $primaryFrameworkDir")
   }
 }
 

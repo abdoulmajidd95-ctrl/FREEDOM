@@ -133,6 +133,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		C100000029B1234500000000 /* Embed & Sign Kotlin Framework */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -213,9 +214,12 @@
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(SRCROOT)/../app/build/bin/iosSimulatorArm64/debugFramework",
-					"$(SRCROOT)/../app/build/bin/iosArm64/debugFramework",
-					"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/**\"",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/iphonesimulator\"",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)\"",
+					"\"$(SRCROOT)/../app/build/bin/iosSimulatorArm64/debugFramework\"",
+					"\"$(SRCROOT)/../app/build/bin/iosArm64/debugFramework\"",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iosApp/Info.plist;
@@ -246,9 +250,12 @@
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(SRCROOT)/../app/build/bin/iosSimulatorArm64/releaseFramework",
-					"$(SRCROOT)/../app/build/bin/iosArm64/releaseFramework",
-					"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/**\"",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)\"",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/iphonesimulator\"",
+					"\"$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)\"",
+					"\"$(SRCROOT)/../app/build/bin/iosSimulatorArm64/releaseFramework\"",
+					"\"$(SRCROOT)/../app/build/bin/iosArm64/releaseFramework\"",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iosApp/Info.plist;

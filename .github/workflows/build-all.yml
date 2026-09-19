@@ -95,7 +95,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Embed and Sign Apple Framework (ComposeApp)
-        run: ./gradlew :app:embedAndSignAppleFrameworkForXcode --stacktrace
+        run: |
+          CONFIGURATION=Debug SDK_NAME=iphonesimulator17.5 PLATFORM_NAME=iphonesimulator ./gradlew :app:embedAndSignAppleFrameworkForXcode --stacktrace
 
       - name: Build iOS Application (Xcode)
         run: |
@@ -105,6 +106,7 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath iosApp/build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO \
             build
 
       # Exigence 7 : Upload Artifacts pour générer le fichier ZIP téléchargeable

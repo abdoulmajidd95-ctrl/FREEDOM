@@ -26,8 +26,8 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -44,10 +44,14 @@ jobs:
       # Exigence 2 : Génération automatique d'un Keystore Debug à la volée avec keytool
       - name: Generate Automatic Debug Keystore
         run: |
-          keytool -genkey -v -keystore debug.keystore \
-            -storepass android -alias androiddebugkey -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          mkdir -p ~/.android
+          cp -f debug.keystore ~/.android/debug.keystore || true
 
       - name: Assemble Android Debug APK
         run: ./gradlew assembleDebug --stacktrace

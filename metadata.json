@@ -1,0 +1,6 @@
+{
+  "name": "Space Dodger",
+  "description": "An arcade space survival game built with Compose Canvas where you pilot a spaceship, dodge falling asteroids, and collect power-ups.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

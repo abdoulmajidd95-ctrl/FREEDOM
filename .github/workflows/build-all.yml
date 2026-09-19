@@ -1,0 +1,115 @@
+name: Build All (Android APK & iOS)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      # Exigence 1 : Force l'utilisation stricte de Gradle 9.3.1 et génère le wrapper
+      - name: Force Gradle 9.3.1 Wrapper
+        run: gradle wrapper --gradle-version 9.3.1
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x gradlew
+
+      # Exigence 2 : Génération automatique d'un Keystore Debug à la volée avec keytool
+      - name: Generate Automatic Debug Keystore
+        run: |
+          keytool -genkey -v -keystore debug.keystore \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Assemble Android Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      # Exigence 7 : Upload Artifacts pour générer le fichier ZIP téléchargeable
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpaceDodger-Android-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  build-ios:
+    name: Build iOS Binary
+    runs-on: macos-14
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app || true
+
+      # Exigence 1 : Force l'utilisation stricte de Gradle 9.3.1 et génère le wrapper
+      - name: Force Gradle 9.3.1 Wrapper
+        run: gradle wrapper --gradle-version 9.3.1
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x gradlew
+
+      - name: Embed and Sign Apple Framework (ComposeApp)
+        run: ./gradlew :app:embedAndSignAppleFrameworkForXcode --stacktrace
+
+      - name: Build iOS Application (Xcode)
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath iosApp/build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      # Exigence 7 : Upload Artifacts pour générer le fichier ZIP téléchargeable
+      - name: Upload iOS Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpaceDodger-iOS-App
+          path: |
+            app/build/xcode-frameworks/
+            iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator/*.app
+          if-no-files-found: warn
+          retention-days: 14
